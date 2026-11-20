@@ -1,0 +1,5 @@
+name: hello
+jobs:
+  greet:
+    image: alpine:3.20
+    command: ["echo", "Hello MiniFlow"]

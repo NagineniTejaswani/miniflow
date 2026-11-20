@@ -1,0 +1,17 @@
+name: example-pipeline
+jobs:
+  prepare:
+    image: python:3.12-slim
+    command: ["python", "-c", "print('Prepare')"]
+  test_a:
+    needs: [prepare]
+    image: python:3.12-slim
+    command: ["python", "-c", "print('Test A')"]
+  test_b:
+    needs: [prepare]
+    image: python:3.12-slim
+    command: ["python", "-c", "print('Test B')"]
+  report:
+    needs: [test_a, test_b]
+    image: alpine:3.20
+    command: ["echo", "Complete"]

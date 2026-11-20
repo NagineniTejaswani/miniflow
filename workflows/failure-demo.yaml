@@ -1,0 +1,13 @@
+name: failure-demo
+jobs:
+  build:
+    image: alpine:3.20
+    command: ["echo", "Building"]
+  broken:
+    needs: [build]
+    image: alpine:3.20
+    command: ["sh", "-c", "exit 1"]
+  deploy:
+    needs: [broken]
+    image: alpine:3.20
+    command: ["echo", "Never runs"]
