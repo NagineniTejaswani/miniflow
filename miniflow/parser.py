@@ -1,9 +1,13 @@
-import yaml
 
-from .models import Workflow, WorkflowError, parse_workflow
+import yaml
+from pydantic import ValidationError
+
+from .models import Workflow
 from .scheduler import find_cycle_jobs
 
 
+class WorkflowError(Exception):
+    """Raised when a workflow definition is invalid."""
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -35,8 +39,15 @@ def load_workflow(path: str) -> Workflow:
 
     if not isinstance(data, dict):
         raise WorkflowError("Workflow must be a YAML mapping with 'name' and 'jobs'")
-    workflow = parse_workflow(data)
-    
+
+    try:
+        workflow = Workflow.model_validate(data)
+    except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+            for err in e.errors()
+        )
+        raise WorkflowError(f"Schema error: {problems}")
 
     _check_dependencies(workflow)
     return workflow
