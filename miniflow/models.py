@@ -1,5 +1,15 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from enum import Enum
+
+
+class JobState(str, Enum):
+    PENDING = "PENDING"
+    READY = "READY"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
 
 class Job(BaseModel):
     model_config = ConfigDict(extra="forbid")  # reject unknown fields
