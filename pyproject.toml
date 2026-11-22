@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "miniflow"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["pyyaml>=6.0", "pydantic>=2.5", "typer>=0.12"]
+dependencies = ["pyyaml>=6.0", "pydantic>=2.5", "typer>=0.12","docker>=7.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
