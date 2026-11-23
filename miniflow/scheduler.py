@@ -1,9 +1,7 @@
 from collections import deque
 
-from collections import deque
-
-from .executor import Executor
-from .models import JobState
+from .executor import Executor, FailureKind, JobResult
+from .models import Job, JobState, Workflow
 
 TERMINAL = {JobState.SUCCESS, JobState.FAILED, JobState.SKIPPED}
 
@@ -30,21 +28,27 @@ def find_cycle_jobs(graph: dict[str, list[str]]) -> list[str]:
 
 class Scheduler:
     """Decides which jobs are ready and tracks every job's state.
-    graph maps job -> list of jobs it needs."""
+    Knows NOTHING about Docker. It only talks to the Executor interface."""
 
-    def __init__(self, graph: dict[str, list[str]]) -> None:
+    def __init__(self, graph: dict[str, list[str]],
+                 jobs: dict[str, Job] | None = None) -> None:
         self.graph = graph
+        self.jobs = jobs or {}                       # job definitions, passed through
         self.state = {job: JobState.PENDING for job in graph}
+        self.results: dict[str, JobResult] = {}      # outcome of each job that ran
         self.dependents: dict[str, list[str]] = {job: [] for job in graph}
         for job, needs in graph.items():
             for dep in needs:
                 self.dependents[dep].append(job)
 
+    @classmethod
+    def from_workflow(cls, workflow: Workflow) -> "Scheduler":
+        graph = {name: job.needs for name, job in workflow.jobs.items()}
+        return cls(graph, jobs=workflow.jobs)
+
     def ready_jobs(self) -> list[str]:
-        """PENDING jobs whose needs are all SUCCESS."""
         return [
-            job
-            for job, state in self.state.items()
+            job for job, state in self.state.items()
             if state == JobState.PENDING
             and all(self.state[dep] == JobState.SUCCESS for dep in self.graph[job])
         ]
@@ -57,7 +61,6 @@ class Scheduler:
         self._skip_downstream(job)
 
     def _skip_downstream(self, failed: str) -> None:
-        """Mark everything that depends on `failed` (directly or not) as SKIPPED."""
         stack = list(self.dependents[failed])
         while stack:
             job = stack.pop()
@@ -68,8 +71,14 @@ class Scheduler:
     def is_finished(self) -> bool:
         return all(state in TERMINAL for state in self.state.values())
 
+    def _execute(self, executor: Executor, job: str) -> JobResult:
+        try:
+            return executor.run(job, self.jobs.get(job))
+        except Exception as e:   # safety net: one bad job must not crash the engine
+            return JobResult(False, kind=FailureKind.INTERNAL_ERROR,
+                             message=f"executor crashed: {e}")
+
     def run(self, executor: Executor) -> list[list[str]]:
-        """Run the whole workflow. Returns the waves of jobs that ran."""
         waves: list[list[str]] = []
         while not self.is_finished():
             ready = self.ready_jobs()
@@ -81,7 +90,9 @@ class Scheduler:
                 self.state[job] = JobState.READY
             for job in ready:
                 self.state[job] = JobState.RUNNING
-                if executor.run(job):
+                result = self._execute(executor, job)
+                self.results[job] = result
+                if result.success:
                     self.mark_success(job)
                 else:
                     self.mark_failed(job)
