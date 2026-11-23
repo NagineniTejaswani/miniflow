@@ -4,6 +4,10 @@ import docker
 from docker.errors import APIError, ImageNotFound
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
+from docker.errors import DockerException
+
+from .executor import FailureKind, JobResult
+from .models import Job
 
 APPROVED_IMAGES = {"alpine:3.20", "python:3.12-slim"}
 
@@ -103,7 +107,46 @@ class DockerExecutor:
             )
         finally:
             container.remove(force=True)   # ALWAYS clean up
+class DockerJobExecutor:
+    """Adapter: lets the scheduler run jobs through DockerExecutor."""
 
+    def __init__(self, docker_executor: DockerExecutor | None = None,
+                 mem_limit: str = "128m") -> None:
+        self.docker = docker_executor or DockerExecutor()
+        self.mem_limit = mem_limit
+
+    def run(self, job_id: str, job: Job) -> JobResult:
+        try:
+            r = self.docker.run(
+                job.image, job.command,
+                timeout=job.timeout, mem_limit=self.mem_limit,
+            )
+        except ImageNotApproved as e:
+            return JobResult(False, stderr=str(e),
+                             kind=FailureKind.STARTUP_ERROR, message=str(e))
+        except (DockerException, RequestsConnectionError) as e:
+            msg = f"Docker error: {e}"
+            return JobResult(False, stderr=msg,
+                             kind=FailureKind.STARTUP_ERROR, message=msg)
+
+        # Order matters: a timeout kill also gives exit code 137
+        if r.timed_out:
+            kind = FailureKind.TIMEOUT
+        elif r.oom_killed:
+            kind = FailureKind.OOM
+        elif r.exit_code != 0:
+            kind = FailureKind.EXIT_CODE
+        else:
+            kind = FailureKind.NONE
+
+        return JobResult(
+            success=r.success,
+            exit_code=r.exit_code,
+            stdout=r.stdout,
+            stderr=r.stderr,
+            kind=kind,
+            message=r.reason,
+        )
 
 if __name__ == "__main__":
     ex = DockerExecutor()

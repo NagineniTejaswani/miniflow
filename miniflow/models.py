@@ -17,7 +17,7 @@ class Job(BaseModel):
     image: str = Field(min_length=1)
     command: list[str] = Field(min_length=1)
     needs: list[str] = Field(default_factory=list)
-
+    timeout: int = Field(default=60, gt=0, le=3600)
 
 class Workflow(BaseModel):
     model_config = ConfigDict(extra="forbid")

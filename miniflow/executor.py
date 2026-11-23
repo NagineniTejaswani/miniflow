@@ -1,12 +1,33 @@
+from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol
+
+from .models import Job
+
+
+class FailureKind(str, Enum):
+    NONE = "NONE"
+    EXIT_CODE = "EXIT_CODE"
+    TIMEOUT = "TIMEOUT"
+    OOM = "OOM"
+    STARTUP_ERROR = "STARTUP_ERROR"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+@dataclass
+class JobResult:
+    success: bool
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    kind: FailureKind = FailureKind.NONE
+    message: str = "ok"
 
 
 class Executor(Protocol):
-    """Anything that can run a job. Docker executor (Day 4) will follow this too."""
+    """The contract. Scheduler depends on this, never on Docker."""
 
-    def run(self, job_id: str) -> bool:
-        """Run the job. Return True on success, False on failure."""
-        ...
+    def run(self, job_id: str, job: Job | None) -> JobResult: ...
 
 
 class FakeExecutor:
@@ -14,8 +35,13 @@ class FakeExecutor:
 
     def __init__(self, fail: set[str] | None = None) -> None:
         self.fail = fail or set()
-        self.executed: list[str] = []   # records the real execution order
+        self.executed: list[str] = []
+        self.jobs_seen: dict[str, Job | None] = {}
 
-    def run(self, job_id: str) -> bool:
+    def run(self, job_id: str, job: Job | None = None) -> JobResult:
         self.executed.append(job_id)
-        return job_id not in self.fail
+        self.jobs_seen[job_id] = job
+        if job_id in self.fail:
+            return JobResult(False, exit_code=1, kind=FailureKind.EXIT_CODE,
+                             message="exit code 1")
+        return JobResult(True, exit_code=0)
