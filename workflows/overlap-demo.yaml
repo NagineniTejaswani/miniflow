@@ -1,0 +1,17 @@
+name: overlap-demo
+jobs:
+  prepare:
+    image: alpine:3.20
+    command: ["echo", "start"]
+  slow_a:
+    needs: [prepare]
+    image: alpine:3.20
+    command: ["sleep", "3"]
+  slow_b:
+    needs: [prepare]
+    image: alpine:3.20
+    command: ["sleep", "3"]
+  report:
+    needs: [slow_a, slow_b]
+    image: alpine:3.20
+    command: ["echo", "done"]

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+import threading
 import docker
 from docker.errors import APIError, ImageNotFound
 from requests.exceptions import ConnectionError as RequestsConnectionError
@@ -44,19 +44,22 @@ class DockerExecutor:
     def __init__(self, approved_images: set[str] | None = None) -> None:
         self.approved_images = approved_images or APPROVED_IMAGES
         self._client = None
+        self._client_lock = threading.Lock()
+        self._image_lock = threading.Lock()
 
     @property
     def client(self):
-        # Created lazily so tests that don't need Docker still work
-        if self._client is None:
-            self._client = docker.from_env()
+        with self._client_lock:
+            if self._client is None:
+                self._client = docker.from_env()
         return self._client
 
     def _ensure_image(self, image: str) -> None:
-        try:
-            self.client.images.get(image)
-        except ImageNotFound:
-            self.client.images.pull(image)
+        with self._image_lock:        # avoid pulling the same image twice at once
+            try:
+                self.client.images.get(image)
+            except ImageNotFound:
+                self.client.images.pull(image)
 
     def run(
         self,
