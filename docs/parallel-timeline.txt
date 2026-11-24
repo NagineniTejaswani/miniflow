@@ -1,0 +1,15 @@
+max_concurrency = 4
+prepare    |█████                                   |   0.00s →   0.70s
+slow_a     |     ████████████████████████████       |   0.70s →   4.44s
+slow_b     |     █████████████████████████████      |   0.70s →   4.61s
+report     |                                  ██████|   4.61s →   5.33s
+total wall time : 5.33s
+slow_a and slow_b overlap: True
+
+max_concurrency = 1
+prepare    |███                                     |   0.00s →   0.77s
+slow_a     |   █████████████████                    |   0.77s →   4.44s
+slow_b     |                    ████████████████    |   4.44s →   8.11s
+report     |                                    ████|   8.11s →   8.83s
+total wall time : 8.83s
+slow_a and slow_b overlap: False

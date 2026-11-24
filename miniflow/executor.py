@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
-
+import threading
 from .models import Job
 
 
@@ -29,18 +29,17 @@ class Executor(Protocol):
 
     def run(self, job_id: str, job: Job | None) -> JobResult: ...
 
-
 class FakeExecutor:
-    """Pretends to run jobs. Jobs listed in `fail` will fail."""
-
     def __init__(self, fail: set[str] | None = None) -> None:
         self.fail = fail or set()
         self.executed: list[str] = []
         self.jobs_seen: dict[str, Job | None] = {}
+        self._lock = threading.Lock()
 
     def run(self, job_id: str, job: Job | None = None) -> JobResult:
-        self.executed.append(job_id)
-        self.jobs_seen[job_id] = job
+        with self._lock:
+            self.executed.append(job_id)
+            self.jobs_seen[job_id] = job
         if job_id in self.fail:
             return JobResult(False, exit_code=1, kind=FailureKind.EXIT_CODE,
                              message="exit code 1")

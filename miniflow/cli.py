@@ -3,7 +3,7 @@ import typer
 from .parser import WorkflowError, load_workflow
 from .docker_executor import DockerJobExecutor
 from .scheduler import Scheduler
-
+from .timeline import format_timeline
 app = typer.Typer(help="MiniFlow: a tiny durable workflow engine.")
 
 
@@ -26,7 +26,11 @@ def validate(path: str) -> None:
     )
 
 @app.command()
-def run(path: str) -> None:
+def run(
+    path: str,
+    max_concurrency: int = typer.Option(
+        4, "--max-concurrency", "-j", min=1, help="Max jobs running at once"),
+) -> None:
     """Execute a workflow in Docker containers."""
     try:
         workflow = load_workflow(path)
@@ -34,10 +38,10 @@ def run(path: str) -> None:
         typer.secho(f"✗ Invalid: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
 
-    scheduler = Scheduler.from_workflow(workflow)
+    scheduler = Scheduler.from_workflow(workflow, max_concurrency=max_concurrency)
     scheduler.run(DockerJobExecutor())
 
-    typer.echo(f"Workflow: {workflow.name}\n")
+    typer.echo(f"Workflow: {workflow.name}  (max concurrency {max_concurrency})\n")
     for name in workflow.jobs:
         state = scheduler.state[name].value
         result = scheduler.results.get(name)
@@ -49,6 +53,9 @@ def run(path: str) -> None:
             typer.echo(f"    stdout: {result.stdout.strip()}")
         if result and result.stderr.strip():
             typer.echo(f"    stderr: {result.stderr.strip()}")
+
+    typer.echo("\nTimeline:")
+    typer.echo(format_timeline(scheduler.timeline))
 
     if any(s.value == "FAILED" for s in scheduler.state.values()):
         raise typer.Exit(code=1)

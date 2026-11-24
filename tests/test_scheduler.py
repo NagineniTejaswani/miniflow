@@ -16,15 +16,19 @@ def test_linear_chain_runs_in_order():
     assert ex.executed == ["a", "b", "c"]
 
 
-def test_parallel_jobs_share_a_wave():
+def test_dependency_order_in_timeline():
     graph = {
         "prepare": [],
         "test_a": ["prepare"],
         "test_b": ["prepare"],
         "report": ["test_a", "test_b"],
     }
-    waves = Scheduler(graph).run(FakeExecutor())
-    assert normalize(waves) == [["prepare"], ["test_a", "test_b"], ["report"]]
+    s = Scheduler(graph)
+    s.run(FakeExecutor())
+    t = s.timeline
+    assert t["prepare"].end <= t["test_a"].start
+    assert t["prepare"].end <= t["test_b"].start
+    assert max(t["test_a"].end, t["test_b"].end) <= t["report"].start
 
 
 def test_join_waits_for_all_dependencies():
