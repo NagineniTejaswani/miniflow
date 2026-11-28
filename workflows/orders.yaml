@@ -1,0 +1,17 @@
+name: daily-orders
+jobs:
+  validate:
+    image: miniflow-validate:1
+    command: ["python", "/app/app.py"]
+  revenue:
+    needs: [validate]
+    image: miniflow-revenue:1
+    command: ["python", "/app/app.py"]
+  quantity:
+    needs: [validate]
+    image: miniflow-quantity:1
+    command: ["python", "/app/app.py"]
+  report:
+    needs: [revenue, quantity]
+    image: miniflow-report:1
+    command: ["python", "/app/app.py"]

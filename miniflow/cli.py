@@ -5,7 +5,7 @@ from .docker_executor import DockerJobExecutor
 from .scheduler import Scheduler
 from .timeline import format_timeline
 app = typer.Typer(help="MiniFlow: a tiny durable workflow engine.")
-
+from pathlib import Path
 
 @app.callback()
 def main() -> None:
@@ -30,6 +30,7 @@ def run(
     path: str,
     max_concurrency: int = typer.Option(
         4, "--max-concurrency", "-j", min=1, help="Max jobs running at once"),
+    workspace: str = typer.Option(None, "--workspace", "-w", help="Folder shared with every job at /workspace")
 ) -> None:
     """Execute a workflow in Docker containers."""
     try:
@@ -38,8 +39,13 @@ def run(
         typer.secho(f"✗ Invalid: {e}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
 
+    if workspace and not Path(workspace).is_dir():
+        typer.secho(f"✗ Workspace folder not found: {workspace}",
+                    fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
     scheduler = Scheduler.from_workflow(workflow, max_concurrency=max_concurrency)
-    scheduler.run(DockerJobExecutor())
+    scheduler.run(DockerJobExecutor(workspace=workspace))
 
     typer.echo(f"Workflow: {workflow.name}  (max concurrency {max_concurrency})\n")
     for name in workflow.jobs:
