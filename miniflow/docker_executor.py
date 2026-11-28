@@ -8,7 +8,9 @@ from docker.errors import DockerException
 
 from .executor import FailureKind, JobResult
 from .models import Job
+from pathlib import Path
 
+APPROVED_PREFIXES = ("miniflow-",)
 APPROVED_IMAGES = {"alpine:3.20", "python:3.12-slim"}
 
 
@@ -41,12 +43,14 @@ class ContainerResult:
 
 
 class DockerExecutor:
-    def __init__(self, approved_images: set[str] | None = None) -> None:
+
+    def __init__(self, approved_images: set[str] | None = None,
+        workspace: str | None = None) -> None:
         self.approved_images = approved_images or APPROVED_IMAGES
+        self.workspace = workspace
         self._client = None
         self._client_lock = threading.Lock()
         self._image_lock = threading.Lock()
-
     @property
     def client(self):
         with self._client_lock:
@@ -55,10 +59,15 @@ class DockerExecutor:
         return self._client
 
     def _ensure_image(self, image: str) -> None:
-        with self._image_lock:        # avoid pulling the same image twice at once
+        with self._image_lock:
             try:
                 self.client.images.get(image)
             except ImageNotFound:
+                if image.startswith(APPROVED_PREFIXES):
+                    raise ImageNotApproved(
+                        f"Image '{image}' not built. "
+                        f"Run: python scripts/build_images.py"
+                    )
                 self.client.images.pull(image)
 
     def run(
@@ -68,19 +77,24 @@ class DockerExecutor:
         timeout: int = 60,
         mem_limit: str = "128m",
     ) -> ContainerResult:
-        if image not in self.approved_images:
+        if image not in self.approved_images and not image.startswith(APPROVED_PREFIXES):
             raise ImageNotApproved(f"Image '{image}' is not approved")
-
         self._ensure_image(image)
+
+        volumes = {}
+        if self.workspace:
+            host_dir = str(Path(self.workspace).resolve())
+            volumes[host_dir] = {"bind": "/workspace", "mode": "rw"}
 
         container = self.client.containers.create(
             image,
             command,
             mem_limit=mem_limit,
-            memswap_limit=mem_limit,      # same value = no swap
-            nano_cpus=1_000_000_000,      # 1 CPU
+            memswap_limit=mem_limit,
+            nano_cpus=1_000_000_000,
             pids_limit=128,
             network_mode="none",
+            volumes=volumes,
         )
         try:
             timed_out = False
@@ -114,8 +128,8 @@ class DockerJobExecutor:
     """Adapter: lets the scheduler run jobs through DockerExecutor."""
 
     def __init__(self, docker_executor: DockerExecutor | None = None,
-                 mem_limit: str = "128m") -> None:
-        self.docker = docker_executor or DockerExecutor()
+                mem_limit: str = "128m", workspace: str | None = None) -> None:
+        self.docker = docker_executor or DockerExecutor(workspace=workspace)
         self.mem_limit = mem_limit
 
     def run(self, job_id: str, job: Job) -> JobResult:
